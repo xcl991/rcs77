@@ -1230,9 +1230,14 @@ function ProxiesContent({ userId }: { userId?: string }) {
               <div className={`proxy-status-indicator ${getStatusClass(proxy.status)}`}></div>
               <div className="flex-1">
                 <p className="text-[#f9fafb] font-mono">{proxy.host}:{proxy.port}</p>
-                <p className="text-xs text-[#9ca3af]">{proxy.type || 'HTTP'} {proxy.username && '(Auth)'}{proxy.responseTime && <span className="ml-2">{proxy.responseTime}ms</span>}</p>
+                <p className="text-xs text-[#9ca3af]">
+                  {proxy.protocol || proxy.type || 'HTTP'}
+                  {proxy.username && ' (Auth)'}
+                  {proxy.responseTime && <span className="ml-2 text-green-400">{proxy.responseTime}ms</span>}
+                  {(proxy.country || proxy.city) && <span className="ml-2">📍 {[proxy.city, proxy.country].filter(Boolean).join(', ')}</span>}
+                </p>
               </div>
-              <Badge className={`mr-4 ${proxy.status === 'LIVE' ? 'status-active' : proxy.status === 'DEAD' ? 'status-error' : 'status-inactive'}`}>{proxy.status || 'UNCHECKED'}</Badge>
+              <Badge className={`mr-4 ${proxy.status === 'LIVE' ? 'status-active' : proxy.status === 'DEAD' ? 'status-error' : proxy.status === 'CHECKING' ? 'status-warning' : 'status-inactive'}`}>{proxy.status || 'UNCHECKED'}</Badge>
               <div className="flex gap-2">
                 <Button size="sm" variant="outline" className="bg-[#374151] border-[#374151] text-[#f9fafb]" onClick={() => handleCheckProxy(proxy.id)}><RefreshCw className="w-4 h-4" /></Button>
                 <Button size="sm" variant="outline" className="bg-[#ef4444] border-[#ef4444] text-white hover:bg-[#dc2626]" onClick={() => handleDelete(proxy)}><Trash2 className="w-4 h-4" /></Button>
