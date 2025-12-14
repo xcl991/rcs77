@@ -84,7 +84,13 @@ export async function DELETE(request: Request) {
     const id = searchParams.get('id')
 
     if (!id) {
-      return Response.json({ error: 'Proxy ID is required' }, { status: 400 })
+      return Response.json({ success: false, error: 'Proxy ID is required' }, { status: 400 })
+    }
+
+    // Check if proxy exists first
+    const existing = await db.proxy.findUnique({ where: { id } })
+    if (!existing) {
+      return Response.json({ success: false, error: 'Proxy not found' }, { status: 404 })
     }
 
     await db.proxy.delete({
@@ -92,8 +98,8 @@ export async function DELETE(request: Request) {
     })
 
     return Response.json({ success: true, message: 'Proxy deleted successfully' })
-  } catch (error) {
+  } catch (error: any) {
     console.error('Delete proxy error:', error)
-    return Response.json({ error: 'Internal server error' }, { status: 500 })
+    return Response.json({ success: false, error: error.message || 'Internal server error' }, { status: 500 })
   }
 }
