@@ -1,14 +1,24 @@
 import { db } from '@/lib/db'
+import { HttpsProxyAgent } from 'https-proxy-agent'
 
 async function checkSingleProxy(host: string, port: number, username?: string | null, password?: string | null) {
   const startTime = Date.now()
 
   try {
-    const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), 8000) // 8s timeout
+    // Build proxy URL
+    const proxyUrl = username && password
+      ? `http://${encodeURIComponent(username)}:${encodeURIComponent(password)}@${host}:${port}`
+      : `http://${host}:${port}`
 
-    // Simple connectivity test
-    const response = await fetch('http://ip-api.com/json/?fields=status,country,city', {
+    const agent = new HttpsProxyAgent(proxyUrl)
+
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 10000) // 10s timeout
+
+    // Make request through proxy
+    const response = await fetch('http://ip-api.com/json/?fields=status,country,city,query', {
+      // @ts-ignore - agent type compatibility
+      agent,
       signal: controller.signal,
     })
 

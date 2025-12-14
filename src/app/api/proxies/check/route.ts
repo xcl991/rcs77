@@ -1,22 +1,25 @@
 import { db } from '@/lib/db'
+import { HttpsProxyAgent } from 'https-proxy-agent'
 
 async function checkProxy(host: string, port: number, username?: string | null, password?: string | null) {
   const startTime = Date.now()
 
   try {
-    // Test proxy by making a request through it to get IP info
+    // Build proxy URL
     const proxyUrl = username && password
-      ? `http://${username}:${password}@${host}:${port}`
+      ? `http://${encodeURIComponent(username)}:${encodeURIComponent(password)}@${host}:${port}`
       : `http://${host}:${port}`
 
-    // Use a simple HTTP request to test connectivity and get geo info
-    const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), 10000) // 10s timeout
+    const agent = new HttpsProxyAgent(proxyUrl)
 
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 15000) // 15s timeout
+
+    // Make request through proxy to get IP info
     const response = await fetch('http://ip-api.com/json/?fields=status,country,city,query', {
+      // @ts-ignore - agent type compatibility
+      agent,
       signal: controller.signal,
-      // Note: In Vercel serverless, we can't use proxy directly
-      // This is a simplified check - actual proxy testing would need a different approach
     })
 
     clearTimeout(timeout)
@@ -29,13 +32,15 @@ async function checkProxy(host: string, port: number, username?: string | null, 
         isLive: true,
         responseTime,
         country: data.country || null,
-        city: data.city || null
+        city: data.city || null,
+        ip: data.query || null
       }
     }
 
-    return { isLive: false, responseTime: null, country: null, city: null }
+    return { isLive: false, responseTime: null, country: null, city: null, ip: null }
   } catch (error) {
-    return { isLive: false, responseTime: null, country: null, city: null }
+    console.error('Proxy check error:', error)
+    return { isLive: false, responseTime: null, country: null, city: null, ip: null }
   }
 }
 
