@@ -14,7 +14,7 @@ export async function GET(request: Request) {
       orderBy: { createdAt: 'desc' }
     })
 
-    return Response.json({ proxies })
+    return Response.json({ success: true, proxies })
   } catch (error) {
     console.error('Get proxies error:', error)
     return Response.json({ error: 'Internal server error' }, { status: 500 })
@@ -41,7 +41,7 @@ export async function POST(request: Request) {
       }
     })
 
-    return Response.json({ proxy })
+    return Response.json({ success: true, proxy })
   } catch (error) {
     console.error('Create proxy error:', error)
     return Response.json({ error: 'Internal server error' }, { status: 500 })
@@ -71,7 +71,7 @@ export async function PUT(request: Request) {
       }
     })
 
-    return Response.json({ proxy })
+    return Response.json({ success: true, proxy })
   } catch (error) {
     console.error('Update proxy error:', error)
     return Response.json({ error: 'Internal server error' }, { status: 500 })
@@ -91,7 +91,7 @@ export async function DELETE(request: Request) {
       where: { id }
     })
 
-    return Response.json({ message: 'Proxy deleted successfully' })
+    return Response.json({ success: true, message: 'Proxy deleted successfully' })
   } catch (error) {
     console.error('Delete proxy error:', error)
     return Response.json({ error: 'Internal server error' }, { status: 500 })

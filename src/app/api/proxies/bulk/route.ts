@@ -25,6 +25,7 @@ export async function POST(request: Request) {
     })
 
     return Response.json({
+      success: true,
       message: `Successfully added ${createdProxies.count} proxies`,
       count: createdProxies.count
     })
