@@ -107,11 +107,6 @@ export default function LoginPage() {
             </Button>
           </form>
 
-          <div className="mt-6 pt-4 border-t border-[#374151]">
-            <p className="text-xs text-center text-[#6b7280]">
-              Default credentials: xcl991 / copolatos123
-            </p>
-          </div>
         </CardContent>
       </Card>
     </div>
