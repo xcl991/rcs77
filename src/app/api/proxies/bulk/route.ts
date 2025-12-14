@@ -17,10 +17,10 @@ export async function POST(request: Request) {
         userId,
         host: proxy.host,
         port: proxy.port,
-        username: proxy.username || '',
-        password: proxy.password || '',
-        type: proxy.type || 'HTTP',
-        status: 'ACTIVE'
+        username: proxy.username || null,
+        password: proxy.password || null,
+        protocol: proxy.type || 'HTTP',
+        status: 'UNCHECKED'
       }))
     })
 

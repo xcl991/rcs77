@@ -34,10 +34,10 @@ export async function POST(request: Request) {
         userId,
         host,
         port,
-        username,
-        password,
-        type: type || 'HTTP',
-        status: 'ACTIVE'
+        username: username || null,
+        password: password || null,
+        protocol: type || 'HTTP',
+        status: 'UNCHECKED'
       }
     })
 
@@ -63,9 +63,9 @@ export async function PUT(request: Request) {
         ...(port && { port }),
         ...(username !== undefined && { username }),
         ...(password !== undefined && { password }),
-        ...(type && { type }),
+        ...(type && { protocol: type }),
         ...(status && { status }),
-        ...(lastChecked && { lastChecked }),
+        ...(lastChecked && { lastChecked: new Date(lastChecked) }),
         ...(responseTime !== undefined && { responseTime }),
         ...(country !== undefined && { country })
       }
