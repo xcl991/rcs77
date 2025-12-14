@@ -1,0 +1,430 @@
+// Prisma schema for MongoDB
+// RCS Blaster Web Panel
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mongodb"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// User & Authentication
+// ============================================
+
+model User {
+  id             String    @id @default(auto()) @map("_id") @db.ObjectId
+  username       String    @unique
+  password       String
+  name           String?
+  role           Role      @default(USER)
+  isActive       Boolean   @default(true)
+  lastLoginAt    DateTime?
+  lastLoginIP    String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  // IP Security
+  whitelistedIPs String[]
+  blacklistedIPs String[]
+
+  // Relations
+  workers      Worker[]
+  sessions     Session[]
+  campaigns    Campaign[]
+  templates    Template[]
+  contacts     Contact[]
+  contactGroups ContactGroup[]
+  proxies      Proxy[]
+  fingerprints Fingerprint[]
+
+  @@map("users")
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+// ============================================
+// Worker (Local PC)
+// ============================================
+
+model Worker {
+  id          String       @id @default(auto()) @map("_id") @db.ObjectId
+  name        String       // "PC-Kantor", "Laptop-Rumah"
+  apiKey      String       @unique
+  status      WorkerStatus @default(OFFLINE)
+  lastSeen    DateTime?
+  ipAddress   String?
+  systemInfo  Json?        // OS, RAM, etc
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  userId      String       @db.ObjectId
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Active campaigns on this worker
+  campaigns   Campaign[]
+
+  // Sessions managed by this worker
+  sessions    Session[]
+
+  @@map("workers")
+}
+
+enum WorkerStatus {
+  ONLINE
+  OFFLINE
+  BUSY
+}
+
+// ============================================
+// Sessions (Browser Sessions)
+// ============================================
+
+model Session {
+  id            String        @id @default(auto()) @map("_id") @db.ObjectId
+  name          String
+  status        SessionStatus @default(INACTIVE)
+  phone         String?       // Phone number associated
+  lastActivity  DateTime?
+
+  // Session data stored on worker
+  hasLocalData  Boolean       @default(false)
+
+  // Proxy assignment
+  proxyId       String?       @db.ObjectId
+  proxy         Proxy?        @relation(fields: [proxyId], references: [id])
+
+  // Fingerprint assignment
+  fingerprintId String?       @db.ObjectId
+  fingerprint   Fingerprint?  @relation(fields: [fingerprintId], references: [id])
+
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  userId        String        @db.ObjectId
+  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Worker that manages this session
+  workerId      String?       @db.ObjectId
+  worker        Worker?       @relation(fields: [workerId], references: [id])
+
+  // Campaigns using this session
+  campaignSessions CampaignSession[]
+
+  @@map("sessions")
+}
+
+enum SessionStatus {
+  ACTIVE
+  INACTIVE
+  EXPIRED
+  ERROR
+}
+
+// ============================================
+// Campaigns
+// ============================================
+
+model Campaign {
+  id              String         @id @default(auto()) @map("_id") @db.ObjectId
+  name            String
+  description     String?
+  status          CampaignStatus @default(DRAFT)
+
+  // Template
+  templateId      String?        @db.ObjectId
+  template        Template?      @relation(fields: [templateId], references: [id])
+
+  // Target contacts
+  contactGroupIds String[]       @db.ObjectId
+  contactIds      String[]       @db.ObjectId
+
+  // Threading config
+  threadCount         Int        @default(1)
+  messagesPerSession  Int        @default(50)
+  delayBetweenMessages Int       @default(3000)
+
+  // Scheduling
+  scheduledAt     DateTime?
+  startedAt       DateTime?
+  completedAt     DateTime?
+  pausedAt        DateTime?
+
+  // Stats
+  stats           Json?          // { sent, failed, pending, skipped, total }
+
+  // Progress tracking
+  processedContactIds String[]   @db.ObjectId
+  currentProgress     Int        @default(0)
+
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  userId          String         @db.ObjectId
+  user            User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Worker executing this campaign
+  workerId        String?        @db.ObjectId
+  worker          Worker?        @relation(fields: [workerId], references: [id])
+
+  // Sessions used in this campaign
+  campaignSessions CampaignSession[]
+
+  // Logs
+  logs            CampaignLog[]
+
+  @@map("campaigns")
+}
+
+model CampaignSession {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+
+  campaignId  String   @db.ObjectId
+  campaign    Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  sessionId   String   @db.ObjectId
+  session     Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@map("campaign_sessions")
+}
+
+model CampaignLog {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  type        String   // sent, failed, skipped, error, info
+  message     String
+  contactId   String?  @db.ObjectId
+  contactPhone String?
+  sessionName String?
+  error       String?
+  createdAt   DateTime @default(now())
+
+  campaignId  String   @db.ObjectId
+  campaign    Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@map("campaign_logs")
+}
+
+enum CampaignStatus {
+  DRAFT
+  SCHEDULED
+  PENDING      // Waiting for worker
+  RUNNING
+  PAUSED
+  COMPLETED
+  CANCELLED
+  FAILED
+}
+
+// ============================================
+// Templates
+// ============================================
+
+model Template {
+  id          String    @id @default(auto()) @map("_id") @db.ObjectId
+  name        String
+  content     String
+  category    String    @default("general")
+  description String?
+
+  // Media attachment
+  mediaUrl    String?
+  mediaType   String?   // image, video, document
+
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  userId      String    @db.ObjectId
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  campaigns   Campaign[]
+
+  @@map("templates")
+}
+
+// ============================================
+// Contacts
+// ============================================
+
+model Contact {
+  id          String    @id @default(auto()) @map("_id") @db.ObjectId
+  name        String
+  phone       String
+  email       String?
+  notes       String?
+  tags        String[]
+
+  // Group memberships
+  groupIds    String[]  @db.ObjectId
+
+  // RCS status
+  hasRCS      Boolean?
+  rcsCheckedAt DateTime?
+
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  userId      String    @db.ObjectId
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("contacts")
+}
+
+model ContactGroup {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  key         String   // Unique key within user
+  name        String
+  description String?
+  color       String   @default("#6b7280")
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  userId      String   @db.ObjectId
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, key])
+  @@map("contact_groups")
+}
+
+// ============================================
+// Proxies
+// ============================================
+
+model Proxy {
+  id           String      @id @default(auto()) @map("_id") @db.ObjectId
+  host         String
+  port         Int
+  username     String?
+  password     String?
+  protocol     ProxyType   @default(HTTP)
+  status       ProxyStatus @default(UNCHECKED)
+
+  // Check results
+  lastChecked  DateTime?
+  responseTime Int?
+  country      String?
+  city         String?
+  failCount    Int         @default(0)
+
+  isActive     Boolean     @default(true)
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  userId       String      @db.ObjectId
+  user         User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Sessions using this proxy
+  sessions     Session[]
+
+  @@map("proxies")
+}
+
+enum ProxyType {
+  HTTP
+  HTTPS
+  SOCKS4
+  SOCKS5
+}
+
+enum ProxyStatus {
+  UNCHECKED
+  CHECKING
+  LIVE
+  DEAD
+}
+
+// ============================================
+// Fingerprints
+// ============================================
+
+model Fingerprint {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  name        String
+
+  // Browser fingerprint data
+  userAgent   String
+  platform    String
+  screen      Json     // { width, height, colorDepth }
+  timezone    String
+  language    String
+  languages   String[]
+
+  // Canvas & WebGL
+  webgl       Json?
+  canvas      String?
+
+  // Audio fingerprint
+  audioContext String?
+
+  // Fonts & Plugins
+  fonts       String[]
+  plugins     Json[]
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  userId      String   @db.ObjectId
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Sessions using this fingerprint
+  sessions    Session[]
+
+  @@map("fingerprints")
+}
+
+// ============================================
+// Task Queue (for Worker polling)
+// ============================================
+
+model TaskQueue {
+  id          String     @id @default(auto()) @map("_id") @db.ObjectId
+  type        TaskType
+  status      TaskStatus @default(PENDING)
+  priority    Int        @default(0)
+
+  // Task payload
+  payload     Json
+
+  // Result
+  result      Json?
+  error       String?
+
+  // Timing
+  createdAt   DateTime   @default(now())
+  startedAt   DateTime?
+  completedAt DateTime?
+
+  // Assignment
+  userId      String     @db.ObjectId
+  workerId    String?    @db.ObjectId
+
+  @@index([status, priority])
+  @@index([userId, status])
+  @@map("task_queue")
+}
+
+enum TaskType {
+  START_CAMPAIGN
+  PAUSE_CAMPAIGN
+  RESUME_CAMPAIGN
+  STOP_CAMPAIGN
+  CREATE_SESSION
+  DELETE_SESSION
+  CHECK_PROXY
+  CHECK_ALL_PROXIES
+}
+
+enum TaskStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
