@@ -10,7 +10,7 @@ export async function GET(request: Request) {
         const users = await db.user.findMany({
           select: {
             id: true,
-            email: true,
+            username: true,
             name: true,
             role: true,
             isActive: true,
@@ -19,7 +19,7 @@ export async function GET(request: Request) {
           },
           orderBy: { createdAt: 'desc' }
         })
-        return Response.json({ users })
+        return Response.json({ success: true, users })
 
       case 'online-users':
         const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000)
@@ -31,13 +31,14 @@ export async function GET(request: Request) {
           },
           select: {
             id: true,
-            email: true,
+            username: true,
             name: true,
             role: true,
+            isActive: true,
             lastLoginAt: true
           }
         })
-        return Response.json({ onlineUsers })
+        return Response.json({ success: true, users: onlineUsers })
 
       case 'offline-users':
         const fiveMinutesAgo2 = new Date(Date.now() - 5 * 60 * 1000)
@@ -50,13 +51,14 @@ export async function GET(request: Request) {
           },
           select: {
             id: true,
-            email: true,
+            username: true,
             name: true,
             role: true,
+            isActive: true,
             lastLoginAt: true
           }
         })
-        return Response.json({ offlineUsers })
+        return Response.json({ success: true, users: offlineUsers })
 
       default:
         return Response.json({ error: 'Invalid action' }, { status: 400 })
@@ -69,15 +71,15 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const { action, email, password, name, role } = await request.json()
+    const { action, username, password, name, role } = await request.json()
 
     if (action === 'create-user') {
-      if (!email || !password) {
-        return Response.json({ error: 'Email and password are required' }, { status: 400 })
+      if (!username || !password) {
+        return Response.json({ error: 'Username and password are required' }, { status: 400 })
       }
 
       const existingUser = await db.user.findUnique({
-        where: { email }
+        where: { username }
       })
 
       if (existingUser) {
@@ -86,14 +88,17 @@ export async function POST(request: Request) {
 
       const user = await db.user.create({
         data: {
-          email,
+          username,
           password,
-          name,
-          role: role || 'USER'
+          name: name || username,
+          role: role || 'USER',
+          isActive: true,
+          whitelistedIPs: [],
+          blacklistedIPs: []
         },
         select: {
           id: true,
-          email: true,
+          username: true,
           name: true,
           role: true,
           isActive: true,
@@ -101,7 +106,7 @@ export async function POST(request: Request) {
         }
       })
 
-      return Response.json({ user })
+      return Response.json({ success: true, user })
     }
 
     return Response.json({ error: 'Invalid action' }, { status: 400 })

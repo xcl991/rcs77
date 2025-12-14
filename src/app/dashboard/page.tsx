@@ -6,6 +6,14 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog'
+import { useToast } from '@/hooks/use-toast'
+import {
   Users,
   Send,
   FileText,
@@ -904,56 +912,385 @@ function WorkersContent({ userId }: { userId?: string }) {
   )
 }
 
+interface AdminUser {
+  id: string
+  username: string
+  name: string | null
+  role: string
+  isActive: boolean
+  lastLoginAt: string | null
+  createdAt: string
+}
+
 function AdminContent() {
+  const { toast } = useToast()
+  const [showCreateModal, setShowCreateModal] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const [creating, setCreating] = useState(false)
+  const [onlineUsers, setOnlineUsers] = useState<AdminUser[]>([])
+  const [offlineUsers, setOfflineUsers] = useState<AdminUser[]>([])
+  const [allUsers, setAllUsers] = useState<AdminUser[]>([])
+
+  // Form state
+  const [formData, setFormData] = useState({
+    username: '',
+    password: '',
+    name: '',
+    role: 'USER'
+  })
+
+  useEffect(() => {
+    loadUsers()
+  }, [])
+
+  const loadUsers = async () => {
+    setLoading(true)
+    try {
+      const [onlineRes, offlineRes, allRes] = await Promise.all([
+        fetch('/api/admin?action=online-users'),
+        fetch('/api/admin?action=offline-users'),
+        fetch('/api/admin?action=users')
+      ])
+
+      const onlineData = await onlineRes.json()
+      const offlineData = await offlineRes.json()
+      const allData = await allRes.json()
+
+      if (onlineData.success) setOnlineUsers(onlineData.users || [])
+      if (offlineData.success) setOfflineUsers(offlineData.users || [])
+      if (allData.success) setAllUsers(allData.users || [])
+    } catch (error) {
+      console.error('Error loading users:', error)
+      toast({
+        title: 'Error',
+        description: 'Failed to load users',
+        variant: 'destructive'
+      })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleCreateUser = async () => {
+    if (!formData.username || !formData.password) {
+      toast({
+        title: 'Error',
+        description: 'Username and password are required',
+        variant: 'destructive'
+      })
+      return
+    }
+
+    setCreating(true)
+    try {
+      const res = await fetch('/api/admin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'create-user',
+          username: formData.username,
+          password: formData.password,
+          name: formData.name || formData.username,
+          role: formData.role
+        })
+      })
+
+      const data = await res.json()
+
+      if (data.success) {
+        toast({
+          title: 'Success',
+          description: `User "${formData.username}" created successfully`
+        })
+        setShowCreateModal(false)
+        setFormData({ username: '', password: '', name: '', role: 'USER' })
+        loadUsers()
+      } else {
+        toast({
+          title: 'Error',
+          description: data.error || 'Failed to create user',
+          variant: 'destructive'
+        })
+      }
+    } catch (error) {
+      console.error('Error creating user:', error)
+      toast({
+        title: 'Error',
+        description: 'Failed to create user',
+        variant: 'destructive'
+      })
+    } finally {
+      setCreating(false)
+    }
+  }
+
+  const handleDeleteUser = async (userId: string, username: string) => {
+    if (!confirm(`Are you sure you want to delete user "${username}"?`)) return
+
+    try {
+      const res = await fetch(`/api/admin?action=delete-user&userId=${userId}`, {
+        method: 'DELETE'
+      })
+
+      const data = await res.json()
+
+      if (data.message) {
+        toast({
+          title: 'Success',
+          description: `User "${username}" deleted successfully`
+        })
+        loadUsers()
+      } else {
+        toast({
+          title: 'Error',
+          description: data.error || 'Failed to delete user',
+          variant: 'destructive'
+        })
+      }
+    } catch (error) {
+      console.error('Error deleting user:', error)
+      toast({
+        title: 'Error',
+        description: 'Failed to delete user',
+        variant: 'destructive'
+      })
+    }
+  }
+
+  const handleToggleUserStatus = async (userId: string, currentStatus: boolean) => {
+    try {
+      const res = await fetch('/api/admin', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'toggle-user-status',
+          userId,
+          isActive: !currentStatus
+        })
+      })
+
+      const data = await res.json()
+
+      if (data.user) {
+        toast({
+          title: 'Success',
+          description: `User ${!currentStatus ? 'activated' : 'deactivated'} successfully`
+        })
+        loadUsers()
+      }
+    } catch (error) {
+      console.error('Error toggling user status:', error)
+    }
+  }
+
+  const renderUserCard = (user: AdminUser, showDelete = true) => (
+    <div key={user.id} className="flex items-center justify-between p-3 bg-[#374151] rounded-lg mb-2">
+      <div className="flex items-center gap-3">
+        <div className={`w-2 h-2 rounded-full ${onlineUsers.some(u => u.id === user.id) ? 'bg-green-500' : 'bg-gray-500'}`} />
+        <div>
+          <p className="text-[#f9fafb] font-medium">{user.name || user.username}</p>
+          <p className="text-xs text-[#9ca3af]">@{user.username} - {user.role}</p>
+        </div>
+      </div>
+      <div className="flex items-center gap-2">
+        <Badge className={user.isActive ? 'bg-green-600' : 'bg-red-600'}>
+          {user.isActive ? 'Active' : 'Inactive'}
+        </Badge>
+        <Button
+          size="sm"
+          variant="outline"
+          className="bg-[#4b5563] border-[#4b5563] text-[#f9fafb] h-8"
+          onClick={() => handleToggleUserStatus(user.id, user.isActive)}
+        >
+          {user.isActive ? <XCircle className="w-4 h-4" /> : <CheckCircle className="w-4 h-4" />}
+        </Button>
+        {showDelete && (
+          <Button
+            size="sm"
+            variant="outline"
+            className="bg-[#ef4444] border-[#ef4444] text-white hover:bg-[#dc2626] h-8"
+            onClick={() => handleDeleteUser(user.id, user.username)}
+          >
+            <Trash2 className="w-4 h-4" />
+          </Button>
+        )}
+      </div>
+    </div>
+  )
+
   return (
     <div>
       <div className="flex justify-between items-center mb-6">
         <h2 className="text-2xl font-bold text-[#f9fafb]">Admin Panel</h2>
         <div className="flex gap-2">
-          <Button className="bg-[#4f46e5] hover:bg-[#4338ca]">
+          <Button
+            className="bg-[#4f46e5] hover:bg-[#4338ca]"
+            onClick={() => setShowCreateModal(true)}
+          >
             <Plus className="w-4 h-4 mr-2" />
             Create User
+          </Button>
+          <Button
+            variant="outline"
+            className="bg-[#374151] border-[#374151] text-[#f9fafb] hover:bg-[#4b5563]"
+            onClick={loadUsers}
+          >
+            <RefreshCw className="w-4 h-4 mr-2" />
+            Refresh
           </Button>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <Card className="bg-[#1f2937] border-[#374151]">
-          <CardHeader>
-            <CardTitle className="text-[#f9fafb]">Online Users</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-[#9ca3af]">No users online.</p>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-[#1f2937] border-[#374151]">
-          <CardHeader>
-            <CardTitle className="text-[#f9fafb]">Offline Users</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-[#9ca3af]">No users offline.</p>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-[#1f2937] border-[#374151]">
-          <CardHeader>
-            <CardTitle className="text-[#f9fafb]">IP Whitelist</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-[#9ca3af]">No whitelisted IPs.</p>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-[#1f2937] border-[#374151]">
-          <CardHeader>
-            <CardTitle className="text-[#f9fafb]">IP Blacklist</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-[#9ca3af]">No blacklisted IPs.</p>
-          </CardContent>
-        </Card>
+      {/* Stats */}
+      <div className="grid grid-cols-4 gap-4 mb-6">
+        <div className="stat-box">
+          <span className="stat-number">{allUsers.length}</span>
+          <span className="stat-label">Total Users</span>
+        </div>
+        <div className="stat-box">
+          <span className="stat-number success">{onlineUsers.length}</span>
+          <span className="stat-label">Online</span>
+        </div>
+        <div className="stat-box">
+          <span className="stat-number danger">{offlineUsers.length}</span>
+          <span className="stat-label">Offline</span>
+        </div>
+        <div className="stat-box">
+          <span className="stat-number warning">{allUsers.filter(u => !u.isActive).length}</span>
+          <span className="stat-label">Inactive</span>
+        </div>
       </div>
+
+      {loading ? (
+        <div className="flex justify-center py-12">
+          <div className="spinner"></div>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <Card className="bg-[#1f2937] border-[#374151]">
+            <CardHeader>
+              <CardTitle className="text-[#f9fafb] flex items-center gap-2">
+                <Wifi className="w-5 h-5 text-green-500" />
+                Online Users ({onlineUsers.length})
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {onlineUsers.length === 0 ? (
+                <p className="text-[#9ca3af]">No users online.</p>
+              ) : (
+                onlineUsers.map(user => renderUserCard(user))
+              )}
+            </CardContent>
+          </Card>
+
+          <Card className="bg-[#1f2937] border-[#374151]">
+            <CardHeader>
+              <CardTitle className="text-[#f9fafb] flex items-center gap-2">
+                <WifiOff className="w-5 h-5 text-gray-500" />
+                Offline Users ({offlineUsers.length})
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {offlineUsers.length === 0 ? (
+                <p className="text-[#9ca3af]">No users offline.</p>
+              ) : (
+                offlineUsers.map(user => renderUserCard(user))
+              )}
+            </CardContent>
+          </Card>
+
+          <Card className="bg-[#1f2937] border-[#374151] md:col-span-2">
+            <CardHeader>
+              <CardTitle className="text-[#f9fafb] flex items-center gap-2">
+                <Users className="w-5 h-5" />
+                All Users ({allUsers.length})
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {allUsers.length === 0 ? (
+                <p className="text-[#9ca3af]">No users found.</p>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                  {allUsers.map(user => renderUserCard(user))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* Create User Modal */}
+      <Dialog open={showCreateModal} onOpenChange={setShowCreateModal}>
+        <DialogContent className="bg-[#1f2937] border-[#374151] text-[#f9fafb]">
+          <DialogHeader>
+            <DialogTitle>Create New User</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            <div>
+              <label className="text-sm text-[#9ca3af] mb-1 block">Username *</label>
+              <input
+                type="text"
+                placeholder="Enter username"
+                className="w-full px-4 py-2 bg-[#374151] border border-[#374151] rounded-lg text-[#f9fafb] placeholder-[#9ca3af] focus:outline-none focus:border-[#4f46e5]"
+                value={formData.username}
+                onChange={(e) => setFormData({ ...formData, username: e.target.value })}
+              />
+            </div>
+
+            <div>
+              <label className="text-sm text-[#9ca3af] mb-1 block">Password *</label>
+              <input
+                type="password"
+                placeholder="Enter password"
+                className="w-full px-4 py-2 bg-[#374151] border border-[#374151] rounded-lg text-[#f9fafb] placeholder-[#9ca3af] focus:outline-none focus:border-[#4f46e5]"
+                value={formData.password}
+                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+              />
+            </div>
+
+            <div>
+              <label className="text-sm text-[#9ca3af] mb-1 block">Display Name</label>
+              <input
+                type="text"
+                placeholder="Enter display name (optional)"
+                className="w-full px-4 py-2 bg-[#374151] border border-[#374151] rounded-lg text-[#f9fafb] placeholder-[#9ca3af] focus:outline-none focus:border-[#4f46e5]"
+                value={formData.name}
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              />
+            </div>
+
+            <div>
+              <label className="text-sm text-[#9ca3af] mb-1 block">Role</label>
+              <select
+                className="w-full px-4 py-2 bg-[#374151] border border-[#374151] rounded-lg text-[#f9fafb] focus:outline-none focus:border-[#4f46e5]"
+                value={formData.role}
+                onChange={(e) => setFormData({ ...formData, role: e.target.value })}
+              >
+                <option value="USER">User</option>
+                <option value="ADMIN">Admin</option>
+              </select>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              className="bg-[#374151] border-[#374151] text-[#f9fafb] hover:bg-[#4b5563]"
+              onClick={() => setShowCreateModal(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              className="bg-[#4f46e5] hover:bg-[#4338ca]"
+              onClick={handleCreateUser}
+              disabled={creating}
+            >
+              {creating ? 'Creating...' : 'Create User'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
